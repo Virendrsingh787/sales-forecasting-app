@@ -8,7 +8,7 @@
 An interactive web app that forecasts **daily sales for any of 1,115 stores** for the next 6 weeks.
 Pick a store, set a promotion / holiday scenario, and get a day-by-day forecast with charts and CSV export.
 
-**🔗 Live demo:** <PASTE YOUR STREAMLIT URL HERE>
+**🔗 Live demo:** https://forecast-salesby-virendraa.streamlit.app/
 
 <!-- Add a screenshot: save it as docs/screenshot.png and uncomment the line below -->
 <!-- ![App screenshot](docs/screenshot.png) -->
