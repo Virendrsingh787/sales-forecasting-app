@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from xgboost import XGBRegressor
+import xgboost as xgb
 
 ART = Path(__file__).parent / "artifacts"
 MONTHS = {1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun",
@@ -17,9 +18,9 @@ st.set_page_config(page_title="Stores - Sales Forecast",
 # ---------------------------------------------------------------- loading
 @st.cache_resource
 def load_model():
-    model = XGBRegressor()
-    model.load_model(str(ART / "xgb_model.json"))
-    return model
+    booster = xgb.Booster()
+    booster.load_model(str(ART / "xgb_model.json"))
+    return booster
 
 
 @st.cache_data
@@ -89,7 +90,11 @@ def forecast(store_ids, horizon, promo, state_hol, school_hol):
     start = pd.Timestamp(meta["last_date"]) + pd.Timedelta(days=1)
     dates = pd.date_range(start, periods=horizon, freq="D")
     f = build_future(store, list(store_ids), dates, promo, state_hol, school_hol, meta)
-    f["Predicted_Sales"] = np.clip(np.expm1(model.predict(f[meta["features"]])), 0, None).round(2)
+    bi = model.attr("best_iteration")
+    rng = (0, int(bi) + 1) if bi is not None else (0, 0)
+    raw = model.predict(xgb.DMatrix(f[meta["features"]]), iteration_range=rng)
+    f["Predicted_Sales"] = np.clip(np.expm1(raw), 0, None).round(2)
+    #f["Predicted_Sales"] = np.clip(np.expm1(model.predict(f[meta["features"]])), 0, None).round(2)
     out = f[["Store", "Date", "Predicted_Sales"]].sort_values(["Store", "Date"]).reset_index(drop=True)
     out.insert(0, "Id", out["Store"].astype(str) + "_" + out["Date"].dt.strftime("%Y-%m-%d"))
     return out
