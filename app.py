@@ -10,7 +10,7 @@ ART = Path(__file__).parent / "artifacts"
 MONTHS = {1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun",
           7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec"}
 
-st.set_page_config(page_title="XYZ Drug Stores - Sales Forecast",
+st.set_page_config(page_title="Stores - Sales Forecast",
                    page_icon="📈", layout="wide")
 
 
@@ -97,14 +97,15 @@ def forecast(store_ids, horizon, promo, state_hol, school_hol):
 
 # ------------------------------------------------------------------ UI
 store, history, meta = load_data()
+all_stores = sorted(store["Store"].unique().tolist())   # all 1,115 stores
+trained = set(meta["trained_stores"])                    # stores the model learned from
 
-st.title("📈 XYZ Drug Stores - Sales Forecasting")
-st.caption("XGBoost model trained on log-transformed daily sales, validated on a time-based hold-out "
-           "(last 6 weeks). Pick a store and a scenario to get a day-by-day forecast.")
+st.title("📈Stores - Sales Forecasting")
+st.caption("(last 6 weeks). Pick a store and a scenario to get a day-by-day forecast.")
 
 with st.sidebar:
     st.header("Forecast settings")
-    store_id = st.selectbox("Store", meta["trained_stores"])
+    store_id = st.selectbox("Store", all_stores)
     horizon = st.slider("Days to forecast", 7, 42, 42, step=7)
     st.subheader("Scenario assumptions")
     promo = st.toggle("Promo running every day", value=False)
@@ -119,6 +120,7 @@ tab_fc, tab_perf, tab_imp, tab_about = st.tabs(
 
 # ---- Forecast tab
 with tab_fc:
+
     out = forecast((store_id,), horizon, promo, state_hol, school_hol)
     s = store[store["Store"] == store_id].iloc[0]
 
@@ -131,8 +133,12 @@ with tab_fc:
 
     hist = history[history["Store"] == store_id].set_index("Date")["Sales"].rename("Actual sales")
     pred = out.set_index("Date")["Predicted_Sales"].rename("Forecast")
-    chart = pd.concat([hist, pred], axis=1)
-    st.subheader(f"Store {store_id}: last 90 days (actual) + next {horizon} days (forecast)")
+    if hist.empty:   # no saved history for this store -> forecast only
+        chart = pred.to_frame()
+        st.subheader(f"Store {store_id}: next {horizon} days (forecast)")
+    else:
+        chart = pd.concat([hist, pred], axis=1)
+        st.subheader(f"Store {store_id}: last 90 days (actual) + next {horizon} days (forecast)")
     st.line_chart(chart, height=380)
 
     left, right = st.columns([2, 1])
@@ -149,10 +155,10 @@ with tab_fc:
     d1.download_button("⬇️ Download this store's forecast (CSV)",
                        out.to_csv(index=False), f"store_{store_id}_forecast.csv", "text/csv")
     if d2.button("Generate batch forecast for ALL stores"):
-        batch = forecast(tuple(meta["trained_stores"]), horizon, promo, state_hol, school_hol)
+        batch = forecast(tuple(all_stores), horizon, promo, state_hol, school_hol)
         st.download_button("⬇️ Download batch forecast (CSV)", batch.to_csv(index=False),
                            "all_stores_forecast.csv", "text/csv")
-        st.success(f"{len(batch):,} rows ready ({len(meta['trained_stores'])} stores x {horizon} days).")
+        st.success(f"{len(batch):,} rows ready ({len(all_stores):,} stores x {horizon} days).")
 
 # ---- Performance tab
 with tab_perf:
@@ -174,15 +180,34 @@ with tab_imp:
 # ---- About tab
 with tab_about:
     st.markdown(f"""
-**Pipeline:** merge sales + store tables → business-logic missing-value fills → drop closed days →
-date & promo-duration features → `log1p(Sales)` target → time-based split → tuned Random Forest /
-XGBoost (early stopping) → RMSPE and R² evaluation.
+### 📈 What is this app?
+This app **predicts how much a store will sell each day** over the next few weeks.
+Pick a store, choose some conditions, and get a day-by-day forecast with a chart.
 
-**Data:** a sample of {len(meta['trained_stores'])} stores (full daily history kept per store).
-Data ends on **{meta['last_date']}**, so forecasts start the day after.
+### 🤔 Why is it useful?
+- 🧑‍🤝‍🧑 **Plan staff**: more people on busy days, fewer on slow days
+- 📦 **Manage stock**: order the right amount so shelves don't run empty
+- 🎯 **Plan promotions**: see how a promotion could change sales
+- 💰 **Set targets**: make realistic budgets and sales goals
 
-**Limitations**
-- Forecasts are only offered for stores the model was trained on.
-- Promo / holiday flags are scenario assumptions, not predictions.
-- The model assumes the store is open every forecast day (closed days were removed from training).
+### 🛠️ How to use it
+1. **Select a store** in the left panel
+2. **Choose how many days** to forecast
+3. **Set the conditions**: promotion, holiday, school holiday
+4. **Read the results**: totals, chart and daily table. You can also download them as CSV.
+
+### 🧠 How does it work? (in simple words)
+The app studied **past sales records** of many stores along with promotions, holidays and store
+details. It noticed patterns like *"sales go up on Saturdays"* or *"promotions boost sales"* and
+uses them to make an educated guess about future days, like an experienced shop owner would.
+
+### 📊 About the data
+Learned from the sales history of **{len(trained)} stores**. Data ends on **{meta['last_date']}**,
+so forecasts start the day after. You can also pick the other {len(all_stores) - len(trained):,} stores.
+
+### ⚠️ Things to keep in mind
+- Stores marked ** give **less reliable** forecasts
+- Promotions and holidays are **your assumptions**, not predictions
+- The app assumes the store is **open every day** you forecast
+- A forecast is a **smart estimate, not a guarantee**: weather, events and surprises can change real sales
 """)
